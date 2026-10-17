@@ -1,0 +1,24 @@
+[project]
+name = "vector-db"
+version = "0.1.0"
+description = "A lightweight, in-memory vector database with an HTTP API, exact KNN search, and WAL durability."
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "aiohttp>=3.9.0",
+    "numpy>=1.26.0",
+    "pydantic>=2.5.0",
+    "aiofiles>=23.2.1",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-asyncio>=0.23.0",
+    "pytest-aiohttp>=1.0.5",
+    "requests>=2.31.0",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
