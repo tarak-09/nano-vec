@@ -30,8 +30,12 @@ uv pip install -e ".[dev]"
 Run the server module as a script, specifying the vector dimension:
 
 ```bash
-python -m vector_db.server --dim 128 --port 8080 --data-dir ./data
+python -m vector_db.server --dim 128 --port 8080 --data-dir ./data --snapshot-interval 3600
 ```
+- `--dim`: Vector dimension (required)
+- `--port`: Port to listen on (default: 8080)
+- `--data-dir`: Directory for WAL and snapshots (default: data)
+- `--snapshot-interval`: Interval in seconds for background snapshotting (default: 0, disabled)
 
 ### 2. Insert Vectors
 
@@ -68,6 +72,15 @@ curl -X POST http://localhost:8080/search -H "Content-Type: application/json" -d
   }
 }'
 ```
+
+### 4. Create a Snapshot
+
+Force an immediate compaction of the in-memory index to disk and truncate the Write-Ahead Log:
+
+```bash
+curl -X POST http://localhost:8080/snapshot
+```
+This is useful to speed up recovery times and prevent infinite WAL growth. Background snapshotting can also be enabled using the `--snapshot-interval` flag.
 
 ## Running Tests
 

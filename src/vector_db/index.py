@@ -86,3 +86,20 @@ class VectorIndex:
             })
 
         return results
+
+    def save(self, filepath: str):
+        np.savez_compressed(
+            filepath,
+            vectors=self.vectors,
+            norms=self.norms,
+            ids=np.array(self.ids, dtype=object),
+            metadata=np.array(self.metadata, dtype=object)
+        )
+
+    def load(self, filepath: str):
+        data = np.load(filepath, allow_pickle=True)
+        self.vectors = data['vectors']
+        self.norms = data['norms']
+        self.ids = data['ids'].tolist()
+        self.metadata = data['metadata'].tolist()
+

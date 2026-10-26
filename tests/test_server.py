@@ -96,3 +96,59 @@ async def test_wal_replay(aiohttp_client):
         data = await resp.json()
         assert data["index_size"] == 1
         await server2.wal.close()
+
+@pytest.mark.asyncio
+async def test_snapshot(aiohttp_client):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # First server instance
+        server1 = VectorDBServer(dimension=2, data_dir=tmpdir)
+        app1 = await server1.init_app()
+        client1 = await aiohttp_client(app1)
+        
+        insert_payload = {
+            "items": [
+                {"id": "v1", "vector": [1.0, 0.0], "metadata": {}},
+                {"id": "v2", "vector": [0.0, 1.0], "metadata": {}}
+            ]
+        }
+        await client1.post('/insert', json=insert_payload)
+        
+        # Trigger snapshot
+        resp = await client1.post('/snapshot')
+        if resp.status != 200:
+            print(await resp.json())
+        assert resp.status == 200
+        
+        # Check that snapshot file was created
+        assert os.path.exists(os.path.join(tmpdir, "snapshot.npz"))
+        
+        # Check that WAL file is empty
+        wal_path = os.path.join(tmpdir, "wal.jsonl")
+        assert os.path.getsize(wal_path) == 0
+        
+        # Insert another item
+        insert_payload2 = {
+            "items": [
+                {"id": "v3", "vector": [0.7, 0.7], "metadata": {}}
+            ]
+        }
+        await client1.post('/insert', json=insert_payload2)
+        assert os.path.getsize(wal_path) > 0
+        await server1.wal.close()
+        
+        # Second server instance (loads snapshot + replays WAL)
+        server2 = VectorDBServer(dimension=2, data_dir=tmpdir)
+        app2 = await server2.init_app()
+        client2 = await aiohttp_client(app2)
+        
+        resp = await client2.get('/health')
+        data = await resp.json()
+        assert data["index_size"] == 3
+        
+        # Verify search works with loaded data
+        search_payload = {"vector": [1.0, 0.0], "k": 1}
+        resp = await client2.post('/search', json=search_payload)
+        data = await resp.json()
+        assert data["results"][0]["id"] == "v1"
+        
+        await server2.wal.close()
