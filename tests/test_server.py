@@ -152,3 +152,64 @@ async def test_snapshot(aiohttp_client):
         assert data["results"][0]["id"] == "v1"
         
         await server2.wal.close()
+
+@pytest.mark.asyncio
+async def test_delete(cli):
+    insert_payload = {
+        "items": [
+            {"id": "v1", "vector": [1.0, 0.0], "metadata": {}},
+            {"id": "v2", "vector": [0.0, 1.0], "metadata": {}}
+        ]
+    }
+    await cli.post('/insert', json=insert_payload)
+    
+    delete_payload = {"ids": ["v1"]}
+    resp = await cli.post('/delete', json=delete_payload)
+    assert resp.status == 200
+    
+    search_payload = {"vector": [1.0, 0.0], "k": 2}
+    resp = await cli.post('/search', json=search_payload)
+    data = await resp.json()
+    
+    assert len(data["results"]) == 1
+    assert data["results"][0]["id"] == "v2"
+    
+    resp = await cli.get('/health')
+    data = await resp.json()
+    assert data["index_size"] == 1
+
+@pytest.mark.asyncio
+async def test_wal_replay_with_delete(aiohttp_client):
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # First server instance
+        server1 = VectorDBServer(dimension=2, data_dir=tmpdir)
+        app1 = await server1.init_app()
+        client1 = await aiohttp_client(app1)
+        
+        insert_payload = {
+            "items": [
+                {"id": "v1", "vector": [1.0, 0.0], "metadata": {}},
+                {"id": "v2", "vector": [0.0, 1.0], "metadata": {}}
+            ]
+        }
+        await client1.post('/insert', json=insert_payload)
+        
+        delete_payload = {"ids": ["v1"]}
+        await client1.post('/delete', json=delete_payload)
+        await server1.wal.close()
+        
+        # Second server instance (replays WAL)
+        server2 = VectorDBServer(dimension=2, data_dir=tmpdir)
+        app2 = await server2.init_app()
+        client2 = await aiohttp_client(app2)
+        
+        resp = await client2.get('/health')
+        data = await resp.json()
+        assert data["index_size"] == 1
+        
+        search_payload = {"vector": [1.0, 0.0], "k": 2}
+        resp = await client2.post('/search', json=search_payload)
+        data = await resp.json()
+        assert len(data["results"]) == 1
+        assert data["results"][0]["id"] == "v2"
+        await server2.wal.close()

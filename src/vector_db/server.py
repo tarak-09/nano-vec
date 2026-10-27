@@ -20,6 +20,9 @@ class SearchRequest(BaseModel):
     k: int = 10
     filter: Optional[Dict[str, Any]] = None
 
+class DeleteRequest(BaseModel):
+    ids: List[str]
+
 class VectorDBServer:
     def __init__(self, dimension: int, data_dir: str = "data"):
         self.dimension = dimension
@@ -41,6 +44,7 @@ class VectorDBServer:
         # Replay WAL
         print(f"Replaying WAL from {self.wal_path}...")
         count = 0
+        deleted_count = 0
         for entry in self.wal.read_all():
             if entry["type"] == "insert_batch":
                 ids = entry["ids"]
@@ -48,13 +52,18 @@ class VectorDBServer:
                 metadata = entry["metadata"]
                 self.index.add_batch(ids, vectors, metadata)
                 count += len(ids)
-        print(f"Replayed {count} items from WAL.")
+            elif entry["type"] == "delete_batch":
+                ids = entry["ids"]
+                self.index.delete_batch(ids)
+                deleted_count += len(ids)
+        print(f"Replayed {count} inserts and {deleted_count} deletes from WAL.")
 
         await self.wal.open()
 
         app = web.Application()
         app.router.add_post('/insert', self.handle_insert)
         app.router.add_post('/search', self.handle_search)
+        app.router.add_post('/delete', self.handle_delete)
         app.router.add_get('/health', self.handle_health)
         app.router.add_post('/snapshot', self.handle_snapshot)
         
@@ -66,6 +75,7 @@ class VectorDBServer:
         await self.wal.close()
 
     async def snapshot(self):
+        self.index.prune_deleted()
         tmp_snapshot_base = self.snapshot_path + ".tmp"
         self.index.save(tmp_snapshot_base)
         # np.savez_compressed automatically appends .npz
@@ -124,6 +134,27 @@ class VectorDBServer:
 
         return web.json_response({"status": "success", "inserted": len(ids)})
 
+    async def handle_delete(self, request: web.Request) -> web.Response:
+        try:
+            data = await request.json()
+            req = DeleteRequest(**data)
+        except ValidationError as e:
+            return web.json_response({"error": "Validation error", "details": e.errors()}, status=400)
+        except Exception as e:
+            return web.json_response({"error": "Invalid JSON"}, status=400)
+
+        # Write to WAL first
+        wal_entry = {
+            "type": "delete_batch",
+            "ids": req.ids
+        }
+        await self.wal.append(wal_entry)
+
+        # Update index
+        self.index.delete_batch(req.ids)
+
+        return web.json_response({"status": "success", "deleted": len(req.ids)})
+
     async def handle_search(self, request: web.Request) -> web.Response:
         try:
             data = await request.json()
@@ -146,7 +177,8 @@ class VectorDBServer:
             return web.json_response({"error": str(e)}, status=500)
 
     async def handle_health(self, request: web.Request) -> web.Response:
-        return web.json_response({"status": "ok", "index_size": len(self.index.ids)})
+        active_count = len(self.index.ids) - int(self.index.deleted.sum()) if hasattr(self.index, 'deleted') else len(self.index.ids)
+        return web.json_response({"status": "ok", "index_size": active_count})
 
 def main():
     import argparse

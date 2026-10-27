@@ -6,7 +6,7 @@ A lightweight, in-memory vector database exposing an HTTP API for exact K-Neares
 - **In-Memory Index**: Fast exact KNN search based on cosine similarity, backed by NumPy.
 - **WAL Durability**: Data is persisted sequentially to an append-only JSONL Write-Ahead Log. On startup, the WAL is replayed to reconstruct the in-memory index.
 - **Metadata Filtering**: Supports attaching metadata to vectors and exactly matching subset fields during search.
-- **Batch Insertion**: Efficient HTTP endpoints to insert multiple vectors at once.
+- **Batch Insertion & Deletion**: Efficient HTTP endpoints to insert multiple vectors at once, or soft-delete vectors by ID (pruned during snapshots).
 
 ## Installation
 
@@ -73,7 +73,18 @@ curl -X POST http://localhost:8080/search -H "Content-Type: application/json" -d
 }'
 ```
 
-### 4. Create a Snapshot
+### 4. Delete Vectors
+
+Use the `/delete` endpoint to soft-delete vectors by ID:
+
+```bash
+curl -X POST http://localhost:8080/delete -H "Content-Type: application/json" -d '{
+  "ids": ["item1"]
+}'
+```
+Deleted items are filtered out of search results immediately and permanently pruned from disk during the next snapshot.
+
+### 5. Create a Snapshot
 
 Force an immediate compaction of the in-memory index to disk and truncate the Write-Ahead Log:
 

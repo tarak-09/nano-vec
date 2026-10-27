@@ -8,6 +8,7 @@ class VectorIndex:
         self.ids = []
         self.metadata = []
         self.norms = np.empty((0,), dtype=np.float32)
+        self.deleted = np.empty((0,), dtype=bool)
 
     def add_batch(self, ids: List[str], vectors: List[List[float]], metadata: List[Dict[str, Any]]):
         if not vectors:
@@ -23,8 +24,38 @@ class VectorIndex:
 
         self.vectors = np.vstack([self.vectors, vec_array])
         self.norms = np.concatenate([self.norms, norms])
+        self.deleted = np.concatenate([self.deleted, np.zeros(len(ids), dtype=bool)])
         self.ids.extend(ids)
         self.metadata.extend(metadata)
+
+    def delete_batch(self, ids: List[str]):
+        if not ids:
+            return
+        id_set = set(ids)
+        for i, doc_id in enumerate(self.ids):
+            if doc_id in id_set:
+                self.deleted[i] = True
+
+    def prune_deleted(self):
+        if len(self.deleted) == 0:
+            return
+        keep_mask = ~self.deleted
+        if keep_mask.all():
+            return
+            
+        self.vectors = self.vectors[keep_mask]
+        self.norms = self.norms[keep_mask]
+        self.deleted = self.deleted[keep_mask]
+        
+        new_ids = []
+        new_metadata = []
+        for i, keep in enumerate(keep_mask):
+            if keep:
+                new_ids.append(self.ids[i])
+                new_metadata.append(self.metadata[i])
+        
+        self.ids = new_ids
+        self.metadata = new_metadata
 
     def search(self, query_vector: List[float], k: int, filter_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
         if len(self.ids) == 0:
@@ -35,27 +66,24 @@ class VectorIndex:
             raise ValueError(f"Expected query vector dimension {self.dimension}, got {q_vec.shape[0]}")
 
         # Filter indices
-        valid_indices = None
-        if filter_metadata:
-            valid_indices = []
-            for i, meta in enumerate(self.metadata):
-                match = True
+        valid_indices = []
+        for i, meta in enumerate(self.metadata):
+            if self.deleted[i]:
+                continue
+            match = True
+            if filter_metadata:
                 for key, val in filter_metadata.items():
                     if meta.get(key) != val:
                         match = False
                         break
-                if match:
-                    valid_indices.append(i)
-            
-            if not valid_indices:
-                return []
-            
-            target_vectors = self.vectors[valid_indices]
-            target_norms = self.norms[valid_indices]
-        else:
-            target_vectors = self.vectors
-            target_norms = self.norms
-            valid_indices = np.arange(len(self.ids))
+            if match:
+                valid_indices.append(i)
+        
+        if not valid_indices:
+            return []
+        
+        target_vectors = self.vectors[valid_indices]
+        target_norms = self.norms[valid_indices]
 
         q_norm = np.linalg.norm(q_vec)
         if q_norm == 0:
@@ -78,7 +106,7 @@ class VectorIndex:
 
         results = []
         for idx in top_k_idx:
-            original_idx = valid_indices[idx] if filter_metadata else idx
+            original_idx = valid_indices[idx]
             results.append({
                 "id": self.ids[original_idx],
                 "score": float(similarities[idx]),
@@ -102,4 +130,5 @@ class VectorIndex:
         self.norms = data['norms']
         self.ids = data['ids'].tolist()
         self.metadata = data['metadata'].tolist()
+        self.deleted = np.zeros(len(self.ids), dtype=bool)
 
