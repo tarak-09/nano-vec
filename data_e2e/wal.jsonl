@@ -1,0 +1,2 @@
+{"type": "insert_batch", "ids": ["item1"], "vectors": [[1.0, 0.0, 0.0, 0.0]], "metadata": [{"ver": 1}]}
+{"type": "insert_batch", "ids": ["item1"], "vectors": [[0.0, 1.0, 0.0, 0.0]], "metadata": [{"ver": 2}]}

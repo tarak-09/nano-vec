@@ -59,6 +59,8 @@ curl -X POST http://localhost:8080/insert -H "Content-Type: application/json" -d
 ```
 *(Ensure vectors have length matching `--dim` parameter, e.g., 4 in this example).*
 
+**Upsert Semantics**: Inserting a vector with an ID that already exists will automatically overwrite the previous vector, acting as an upsert.
+
 ### 3. Search Vectors
 
 Find the closest matches using exact KNN, optionally filtered by metadata:

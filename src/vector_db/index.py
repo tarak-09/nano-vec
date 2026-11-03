@@ -9,6 +9,7 @@ class VectorIndex:
         self.metadata = []
         self.norms = np.empty((0,), dtype=np.float32)
         self.deleted = np.empty((0,), dtype=bool)
+        self.id_map: Dict[str, int] = {}
 
     def add_batch(self, ids: List[str], vectors: List[List[float]], metadata: List[Dict[str, Any]]):
         if not vectors:
@@ -17,6 +18,13 @@ class VectorIndex:
         vec_array = np.array(vectors, dtype=np.float32)
         if vec_array.shape[1] != self.dimension:
             raise ValueError(f"Expected vector dimension {self.dimension}, got {vec_array.shape[1]}")
+        
+        start_idx = len(self.ids)
+        for i, doc_id in enumerate(ids):
+            if doc_id in self.id_map:
+                old_idx = self.id_map[doc_id]
+                self.deleted[old_idx] = True
+            self.id_map[doc_id] = start_idx + i
         
         norms = np.linalg.norm(vec_array, axis=1)
         # Avoid division by zero
@@ -31,10 +39,11 @@ class VectorIndex:
     def delete_batch(self, ids: List[str]):
         if not ids:
             return
-        id_set = set(ids)
-        for i, doc_id in enumerate(self.ids):
-            if doc_id in id_set:
-                self.deleted[i] = True
+        for doc_id in ids:
+            if doc_id in self.id_map:
+                idx = self.id_map[doc_id]
+                self.deleted[idx] = True
+                del self.id_map[doc_id]
 
     def prune_deleted(self):
         if len(self.deleted) == 0:
@@ -49,10 +58,15 @@ class VectorIndex:
         
         new_ids = []
         new_metadata = []
+        self.id_map.clear()
+        
         for i, keep in enumerate(keep_mask):
             if keep:
-                new_ids.append(self.ids[i])
+                new_idx = len(new_ids)
+                doc_id = self.ids[i]
+                new_ids.append(doc_id)
                 new_metadata.append(self.metadata[i])
+                self.id_map[doc_id] = new_idx
         
         self.ids = new_ids
         self.metadata = new_metadata
@@ -131,4 +145,5 @@ class VectorIndex:
         self.ids = data['ids'].tolist()
         self.metadata = data['metadata'].tolist()
         self.deleted = np.zeros(len(self.ids), dtype=bool)
+        self.id_map = {doc_id: i for i, doc_id in enumerate(self.ids)}
 

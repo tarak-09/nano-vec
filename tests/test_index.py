@@ -83,3 +83,35 @@ def test_prune_deleted():
     assert index.vectors.shape == (1, 3)
     assert len(index.deleted) == 1
     assert not index.deleted[0]
+
+def test_upsert_duplicate_id():
+    index = VectorIndex(3)
+    index.add_batch(
+        ["1", "2"],
+        [[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]],
+        [{"ver": 1}, {"ver": 1}]
+    )
+    # Upsert "1"
+    index.add_batch(
+        ["1"],
+        [[0.0, 0.0, 1.0]],
+        [{"ver": 2}]
+    )
+    
+    # Should only return the new one
+    results = index.search([0.0, 0.0, 1.0], k=5)
+    assert len(results) == 2
+    
+    # "1" should be the closest match
+    assert results[0]["id"] == "1"
+    assert results[0]["score"] == pytest.approx(1.0)
+    assert results[0]["metadata"]["ver"] == 2
+    
+    # Prune should leave only 2 vectors
+    index.prune_deleted()
+    assert len(index.ids) == 2
+    assert "1" in index.ids
+    assert "2" in index.ids
+    
+    results_after_prune = index.search([0.0, 0.0, 1.0], k=5)
+    assert len(results_after_prune) == 2
