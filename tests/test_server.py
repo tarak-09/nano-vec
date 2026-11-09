@@ -213,3 +213,27 @@ async def test_wal_replay_with_delete(aiohttp_client):
         assert len(data["results"]) == 1
         assert data["results"][0]["id"] == "v2"
         await server2.wal.close()
+
+@pytest.mark.asyncio
+async def test_search_euclidean(cli):
+    insert_payload = {
+        "items": [
+            {"id": "v1", "vector": [0.0, 0.0], "metadata": {}},
+            {"id": "v2", "vector": [3.0, 4.0], "metadata": {}}
+        ]
+    }
+    await cli.post('/insert', json=insert_payload)
+    
+    search_payload = {
+        "vector": [0.0, 0.0],
+        "k": 2,
+        "metric": "euclidean"
+    }
+    resp = await cli.post('/search', json=search_payload)
+    assert resp.status == 200
+    data = await resp.json()
+    assert len(data["results"]) == 2
+    assert data["results"][0]["id"] == "v1"
+    assert data["results"][0]["score"] == pytest.approx(0.0)
+    assert data["results"][1]["id"] == "v2"
+    assert data["results"][1]["score"] == pytest.approx(-5.0)

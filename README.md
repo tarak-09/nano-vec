@@ -1,9 +1,9 @@
 # Vector DB
 
-A lightweight, in-memory vector database exposing an HTTP API for exact K-Nearest Neighbors (KNN) search via cosine similarity, with Write-Ahead Log (WAL) durability. 
+A lightweight, in-memory vector database exposing an HTTP API for exact K-Nearest Neighbors (KNN) search via cosine or Euclidean distance, with Write-Ahead Log (WAL) durability. 
 
 ## Features
-- **In-Memory Index**: Fast exact KNN search based on cosine similarity, backed by NumPy.
+- **In-Memory Index**: Fast exact KNN search based on cosine similarity or Euclidean distance, backed by NumPy.
 - **WAL Durability**: Data is persisted sequentially to an append-only JSONL Write-Ahead Log. On startup, the WAL is replayed to reconstruct the in-memory index.
 - **Metadata Filtering**: Supports attaching metadata to vectors and exactly matching subset fields during search.
 - **Batch Insertion & Deletion**: Efficient HTTP endpoints to insert multiple vectors at once, or soft-delete vectors by ID (pruned during snapshots).
@@ -63,7 +63,7 @@ curl -X POST http://localhost:8080/insert -H "Content-Type: application/json" -d
 
 ### 3. Search Vectors
 
-Find the closest matches using exact KNN, optionally filtered by metadata:
+Find the closest matches using exact KNN (supports `cosine` and `euclidean` metrics), optionally filtered by metadata:
 
 ```bash
 curl -X POST http://localhost:8080/search -H "Content-Type: application/json" -d '{
@@ -71,7 +71,8 @@ curl -X POST http://localhost:8080/search -H "Content-Type: application/json" -d
   "k": 5,
   "filter": {
     "tag": "news"
-  }
+  },
+  "metric": "cosine"
 }'
 ```
 

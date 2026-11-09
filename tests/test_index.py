@@ -115,3 +115,24 @@ def test_upsert_duplicate_id():
     
     results_after_prune = index.search([0.0, 0.0, 1.0], k=5)
     assert len(results_after_prune) == 2
+
+def test_search_euclidean():
+    index = VectorIndex(3)
+    index.add_batch(
+        ["1", "2", "3"],
+        [[0.0, 0.0, 0.0], [3.0, 4.0, 0.0], [1.0, 1.0, 1.0]],
+        [{}, {}, {}]
+    )
+    
+    # Query vector is [0.0, 0.0, 0.0]
+    # Distances:
+    # 1: 0.0 (score = 0.0)
+    # 2: 5.0 (score = -5.0)
+    # 3: sqrt(3) ~ 1.732 (score = -1.732)
+    
+    results = index.search([0.0, 0.0, 0.0], k=2, metric="euclidean")
+    assert len(results) == 2
+    assert results[0]["id"] == "1"
+    assert results[0]["score"] == pytest.approx(0.0)
+    assert results[1]["id"] == "3"
+    assert results[1]["score"] == pytest.approx(-1.7320508)

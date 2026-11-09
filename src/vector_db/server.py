@@ -19,6 +19,7 @@ class SearchRequest(BaseModel):
     vector: List[float]
     k: int = 10
     filter: Optional[Dict[str, Any]] = None
+    metric: str = "cosine"
 
 class DeleteRequest(BaseModel):
     ids: List[str]
@@ -171,7 +172,7 @@ class VectorDBServer:
             )
 
         try:
-            results = self.index.search(req.vector, req.k, req.filter)
+            results = self.index.search(req.vector, req.k, req.filter, req.metric)
             return web.json_response({"results": results})
         except Exception as e:
             return web.json_response({"error": str(e)}, status=500)

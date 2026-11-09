@@ -71,7 +71,7 @@ class VectorIndex:
         self.ids = new_ids
         self.metadata = new_metadata
 
-    def search(self, query_vector: List[float], k: int, filter_metadata: Dict[str, Any] = None) -> List[Dict[str, Any]]:
+    def search(self, query_vector: List[float], k: int, filter_metadata: Dict[str, Any] = None, metric: str = "cosine") -> List[Dict[str, Any]]:
         if len(self.ids) == 0:
             return []
 
@@ -103,27 +103,38 @@ class VectorIndex:
         if q_norm == 0:
             q_norm = 1e-10
 
-        # Cosine similarity: dot product / (norm(a) * norm(b))
-        dot_products = np.dot(target_vectors, q_vec)
-        similarities = dot_products / (target_norms * q_norm)
-
-        # Get top k
-        k = min(k, len(similarities))
-        
-        # argpartition is faster than argsort for top k
-        if k < len(similarities):
-            top_k_idx = np.argpartition(similarities, -k)[-k:]
-            # sort the top k by similarity
-            top_k_idx = top_k_idx[np.argsort(similarities[top_k_idx])[::-1]]
+        if metric == "cosine":
+            # Cosine similarity: dot product / (norm(a) * norm(b))
+            dot_products = np.dot(target_vectors, q_vec)
+            scores = dot_products / (target_norms * q_norm)
+            
+            k = min(k, len(scores))
+            if k < len(scores):
+                top_k_idx = np.argpartition(scores, -k)[-k:]
+                top_k_idx = top_k_idx[np.argsort(scores[top_k_idx])[::-1]]
+            else:
+                top_k_idx = np.argsort(scores)[::-1]
+        elif metric == "euclidean":
+            # Euclidean distance: smaller is better, so score is -distance for consistent sorting
+            diffs = target_vectors - q_vec
+            distances = np.linalg.norm(diffs, axis=1)
+            scores = -distances
+            
+            k = min(k, len(scores))
+            if k < len(scores):
+                top_k_idx = np.argpartition(scores, -k)[-k:]
+                top_k_idx = top_k_idx[np.argsort(scores[top_k_idx])[::-1]]
+            else:
+                top_k_idx = np.argsort(scores)[::-1]
         else:
-            top_k_idx = np.argsort(similarities)[::-1]
+            raise ValueError(f"Unknown metric: {metric}")
 
         results = []
         for idx in top_k_idx:
             original_idx = valid_indices[idx]
             results.append({
                 "id": self.ids[original_idx],
-                "score": float(similarities[idx]),
+                "score": float(scores[idx]),
                 "metadata": self.metadata[original_idx]
             })
 
